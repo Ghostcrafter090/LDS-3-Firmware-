@@ -1117,7 +1117,7 @@ void setup() {
 }
 
 bool runCalibrate = true;
-bool runScreen = true;
+bool runScreen = false;
 bool slowTic = true;
 bool runEmf = true;
 int sendGeneral = 0;
