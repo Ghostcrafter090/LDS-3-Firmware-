@@ -2,6 +2,8 @@
 #include <Wire.h>
 #include <ds3231.h>
 #include <string.h>
+#include <MemoryFree.h>;
+
 using namespace std;
 
 const int numberOfShiftRegisters = 2;
@@ -13,7 +15,7 @@ int redLed = 3;
 int Bri = 5;
 int fan = 12;
 
-int loopTic = 0;
+unsigned long loopTic = 0;
 
 ShiftRegister74HC595<numberOfShiftRegisters> sr(serialDataPin, clockPin, latchPin);
 
@@ -121,6 +123,56 @@ class octalParClass {
         pinMode(clocky, OUTPUT);
         pinMode(receiveClock, INPUT);
       }
+    }
+
+    void transmit(byte x, byte y, const __FlashStringHelper *gf, bool h = 0) {
+      int i = 0;
+      int g = 0;
+      if (transI > transN) {
+        transF = 0;
+        memset(transValue, 0, 300);
+      }
+      byte xf = (x * 4) + 16;
+      byte yf = (y * 6) + 16;
+      
+      if (xf == 16) {
+        xf = 15;
+      } else if (xf == 32) {
+        xf = 31;
+      } else if (xf == 64) {
+        xf = 63;
+      } 
+      if (yf == 16) {
+        yf = 15;
+      } else if (yf == 32) {
+        yf == 31;
+      } else if (yf == 64) {
+        yf = 63;
+      }
+      if (transF < (299)) {
+        if (h != 1) {
+          transValue[transF] = xf;
+          transValue[transF + 1] = yf;
+          transF = transF + 2;
+        }
+
+        while (i < strlen((const char*)gf)) {
+          if (((const char*)gf)[i] == ' ') {
+            transValue[transF] = '|';
+          } else {
+            transValue[transF] = ((const char*)gf)[i];
+          }
+          transF = transF + 1;
+          i = i + 1;
+        }
+      }
+      // Serial.begin(115200);
+      // Serial.println(transI);
+      // Serial.end();
+      if (transI > transN) {
+        transI = 0;
+      }
+      transN = strlen(transValue);
     }
 
     void transmit(byte x, byte y, char * gf, bool h = 0) {
@@ -383,7 +435,7 @@ class latencyClass {
     unsigned long loopTime = 0;
 
     void getLatency() {
-      loopTime = ((loopTime * 10) + (micros() - mill)) / 11;
+      loopTime = ((loopTime * 100) + (micros() - mill)) / 101;
       mill = micros();
     }
 };
@@ -495,22 +547,29 @@ dangerController dangerClass;
 class comClass {
 
   public:
-    void messageGeneral(int emfHigh, int emfLow) {
+
+    int strikeReg[3] = {0, 0, 0};
+  
+    void messageGeneral(int emfHighA, int emfLowA, int emfHighB, int emfLowB) {
       Serial.begin(115200);
-      Serial.println("");
-      Serial.print("{\"strike\":");
-      Serial.print("\"False\"");
-      Serial.print(",\"Calibration\":{\"emfHigh\":");
-      Serial.print(emfHigh);
-      Serial.print(",\"emfLow\":");
-      Serial.print(emfLow);
-      Serial.print("},\"latency\":");
+      Serial.println(F(""));
+      Serial.print(F("{\"strike\":\"False\",\"Calibration\":{\"sensorA\":{\"emfHigh\":"));
+      Serial.print(emfHighA);
+      Serial.print(F(",\"emfLow\":"));
+      Serial.print(emfLowA);
+      Serial.print(F("},\"sensorB\":{\"emfHigh\":"));
+      Serial.print(emfHighB);
+      Serial.print(F(",\"emfLow\":"));
+      Serial.print(emfLowB);
+      Serial.print(F("}},\"latency\":"));
       Serial.print(latencyClass.loopTime);
-      Serial.print(",\"millis\":");
+      Serial.print(F(",\"freeMemmory\":"));
+      Serial.print(freeMemory(), DEC);
+      Serial.print(F(",\"millis\":"));
       Serial.print(millis());
-      Serial.print(",\"dangerLevel\":");
+      Serial.print(F(",\"dangerLevel\":"));
       Serial.print(dangerClass.getDanger());
-      Serial.print(",\"time\":[");
+      Serial.print(F(",\"time\":["));
       Serial.print(timef.getTime().year);
       Serial.print(",");
       Serial.print(timef.getTime().month);
@@ -526,24 +585,32 @@ class comClass {
       Serial.end();
     }
 
-    void messageStrike(int emfHigh, int emfLow, int emf) {
+    void messageStrike(int emfHighA, int emfLowA, int emfHighB, int emfLowB, int emf, int sensor) {
       Serial.begin(115200);
       Serial.println("");
-      Serial.print("{\"strike\":");
-      Serial.print("\"True\"");
-      Serial.print(",\"Calibration\":{\"emfHigh\":");
-      Serial.print(emfHigh);
-      Serial.print(",\"emfLow\":");
-      Serial.print(emfLow);
-      Serial.print("},\"latency\":");
+      Serial.print(F("{\"strike\":\"True\",\"Calibration\":{\"sensorA\":{\"emfHigh\":"));
+      Serial.print(emfHighA);
+      Serial.print(F(",\"emfLow\":"));
+      Serial.print(emfLowA);
+      Serial.print(F("},\"sensorB\":{\"emfHigh\":"));
+      Serial.print(emfHighB);
+      Serial.print(F(",\"emfLow\":"));
+      Serial.print(emfLowB);
+      Serial.print(F("},\"sensor\":"));
+      if (sensor == A2) {
+        Serial.print(F("\"A\""));
+      } else {
+        Serial.print(F("\"B\""));
+      }
+      Serial.print(F("},\"latency\":"));
       Serial.print(latencyClass.loopTime);
-      Serial.print(",\"millis\":");
+      Serial.print(F(",\"millis\":"));
       Serial.print(millis());
-      Serial.print(",\"strikeMax\":");
+      Serial.print(F(",\"strikeMax\":"));
       Serial.print(emf);
-      Serial.print(",\"dangerLevel\":");
+      Serial.print(F(",\"dangerLevel\":"));
       Serial.print(dangerClass.getDanger());
-      Serial.print(",\"time\":[");
+      Serial.print(F(",\"time\":["));
       Serial.print(timef.getTime().year);
       Serial.print(",");
       Serial.print(timef.getTime().month);
@@ -557,6 +624,13 @@ class comClass {
       Serial.print(timef.getTime().second);
       Serial.print("]}");
       Serial.end();
+    }
+
+    void registerStrike(int emf, int sensor) {
+      strikeReg[0] = emf;
+      strikeReg[1] = sensor;
+      strikeReg[2] = 1;
+      
     }
 
     void sendMessage(String message) {
@@ -566,6 +640,37 @@ class comClass {
     }
 };
 comClass com;
+
+class sensorClass {
+  private:
+    double tempf = 0;
+    int mod = 20;
+  
+  public:
+    double getLightLevel() {
+      int out = (100 - (analogRead(A3)) + 61) * 4;
+      if (out < 50) {
+        out = 50;
+      }
+      if (out > 255) {
+        out = 255;
+      }
+      return out; // replace with out variable, unit is %
+    }
+
+    double getTemperature() {
+      double a[2] = {136.8288, 24.4};
+      double b[2] = {137.6537, 21.9};
+      double temp = (((b[1] - a[1]) / (b[0] - a[0])) * analogRead(A1)) + 439.08299187781074;
+      tempf = ((tempf * mod) + temp) / (mod + 1);
+      // add thermister code here.
+      // Serial.begin(115200);
+      // Serial.println(tempf);
+      // Serial.end();
+      return tempf; // replace with out variable here, unit is Celcius
+    }
+};
+sensorClass sensors;
 
 class fanClass {
   private:
@@ -587,13 +692,14 @@ class fanClass {
     }
 
     void handler() {
-      if ((fanTic - 60000) < millis()) {
-        setFan(LOW);
-      } else {
-        setFan(HIGH);
-      }
+      // double templ = sensors.getTemperature();
       if (fanTic < millis()) {
-        fanTic = millis() + 240000;
+        if (sensors.getTemperature() < 20) {
+          setFan(LOW);
+        } else {
+          setFan(HIGH);
+        }
+        fanTic = millis() + 10000;
       }
     }
 };
@@ -604,6 +710,33 @@ class emfClass {
     int emf = 0;
     int emfHigh = 0;
     int emfLow = 0;
+    int emfHighn = 0;
+    int emfLown = 0;
+    unsigned long calibTic = 0;
+
+    double refToVolt(int ref) {
+      switch(ref) {
+        case 1:
+          return 5;
+          break;
+        case 2:
+          return 1.1;
+          break;
+        case 3:
+          return 2.56;
+          break;
+      }
+      return 5;
+    }
+
+    int analogRef = 1;
+
+    int analogPin = A0;
+
+    emfClass(int analogPinf, int reference) {
+      analogPin = analogPinf;
+      analogRef = reference;
+    }
 
     void calibrate() {
       if (millis() > tickers.beepTic) {
@@ -615,44 +748,41 @@ class emfClass {
           emfLow = emf;
           sounds.playSound(200, 10);
         }
-        if (millis() > tickers.calibTic) {
-          com.messageGeneral(emfHigh, emfLow);
+        if (millis() > calibTic) {
           emfHigh = emfHigh - 1;
           emfLow = emfLow + 1;
-          tickers.calibTic = millis() + 5000;
+          calibTic = millis() + 5000;
           sounds.playSound(100, 10);
         }
+        emfHighn = emfHigh + (int)(8 * (5 / refToVolt(analogRef)));
+        emfLown = emfLow - (int)(8 * (5 / refToVolt(analogRef)));
       }
     }
+
+    // analogReference(0); EXTERNAL
+    // analogReference(1); DEFAULT
+    // analogReference(2); INTERNAL1V1
+    // analogReference(3); INTERNAL2V56
 
     void detect() {
-      emf = analogRead(A0);
-      if ((emf > (emfHigh + 10)) or (emf < (emfLow - 10))) {
+      analogReference(analogRef);
+      emf = analogRead(analogPin);
+      analogReference(1);
+      if ((emf > emfHighn) or (emf < emfLown)) {
         if (millis() > tickers.beepTic) {
           if ((thermals.returnLastFanEvent() + 2000) < millis()) {
-            dangerClass.recordStrike();
-            tickers.beepTic = millis() + 1000;
+            if (millis() > 10000) {
+              dangerClass.recordStrike();
+              tickers.beepTic = millis() + 2000;
+            }
           }
         }
-        com.messageStrike(emfHigh, emfLow, emf);
+        com.registerStrike(emf, analogPin);
       }
     }
 };
-emfClass emfClass;
-
-class sensorClass {
-  public:
-    int getLightLevel() {
-      // add photoresistor code here.
-      return 100; // replace with out variable, unit is %
-    }
-
-    float getTemperature() {
-      // add thermister code here.
-      return 20; // replace with out variable here, unit is Celcius
-    }
-};
-sensorClass sensors;
+emfClass sensorA(A2, 2);
+emfClass sensorB(A0, 2);
 
 class dispClass {
   private:
@@ -691,7 +821,7 @@ class dispClass {
     }
 
     void dangerIndicator() {
-      analogWrite(Bri, (sensors.getLightLevel() * 255) / 100);
+      analogWrite(Bri, (sensors.getLightLevel()));
       if (dangerClass.getDanger() > 1) {
         if (blinker < millis()) {
           if (blinkState == 0) {
@@ -742,8 +872,8 @@ class dispClass {
     }
 
     void emfMeter() {
-      float changef = (emfClass.emf - (emfClass.emfHigh - (emfClass.emfHigh / 3)));
-      float changen = emfClass.emfHigh - emfHighOld;
+      float changef = (sensorB.emf - (sensorB.emfHigh - (sensorB.emfHigh / 3)));
+      float changen = sensorB.emfHigh - emfHighOld;
       if (changef < -0.1) {
         changef = -0.1;
       }
@@ -777,7 +907,7 @@ class dispClass {
       } else {
         ledState(3, 0);
       }
-      emfHighOld = emfClass.emfHigh;
+      emfHighOld = sensorB.emfHigh;
     }
 
     void testLights() {
@@ -849,6 +979,14 @@ class screenClass {
     unsigned int coords[1][2] = {{(char)1, (char)1}};
     int n = 0;
     int r = 40;
+    int j = 5;
+
+    int hourOld = -1;
+    int minuteOld = -1;
+
+    int dangerOld = 0;
+    int emfHighOld[2] = {0, 0};
+    int emfLowOld[2] = {0, 0};
 
   public:
     void handler() {
@@ -856,15 +994,28 @@ class screenClass {
         updateTic = millis() + 500;
         r = r + 1;
         if (r > 40) {
-          parralel.transmit(0, 0, "^>");
-          parralel.transmit(1, 1, "LDS-3>");
-          parralel.transmit(7, 1, "Lightning Detector>");
-          parralel.transmit(1, 2, "------------------------->");
-          parralel.transmit(3, 5, "Danger Level: >");
-          parralel.transmit(3, 6, "EMF High    : >");
-          parralel.transmit(3, 7, "EMF Low     : >");
+          parralel.transmit(0, 0, F("^>"));
+          parralel.transmit(1, 1, F("LDS-3>"));
+          parralel.transmit(7, 1, F("Lightning Detector>"));
+          parralel.transmit(1, 2, F("------------------------->"));
+          parralel.transmit(3, 5, F("Danger Level: >"));
+          parralel.transmit(3, 6, F("EMF High SA : >"));
+          parralel.transmit(3, 7, F("EMF Low  SA : >"));
+          parralel.transmit(3, 9, F("EMF High SB : >"));
+          parralel.transmit(3, 10, F("EMF Low  SB : >"));
+          parralel.transmitInt(17, 5, dangerClass.getDanger(), 1);
+          parralel.transmitInt(17, 6, sensorA.emfHigh, 1);
+          parralel.transmitInt(17, 7, sensorA.emfLow, 1);
+          parralel.transmitInt(17, 9, sensorB.emfHigh, 1);
+          parralel.transmitInt(17, 10, sensorB.emfLow, 1);
+          dangerOld =  dangerClass.getDanger();
+          emfHighOld[0] = sensorA.emfHigh;
+          emfLowOld[0] = sensorA.emfLow;
+          emfHighOld[1] = sensorB.emfHigh;
+          emfLowOld[1] = sensorB.emfLow;
           r = 0;
         }
+        
         int secondf = timef.getTime().second;
         int minutef = timef.getTime().minute;
         int hourf = timef.getTime().hour;
@@ -875,28 +1026,54 @@ class screenClass {
           hourf = 12;
         }
 
-        parralel.transmitInt(17, 5, dangerClass.getDanger(), 1);
-        parralel.transmitInt(17, 6, emfClass.emfHigh, 1);
-        parralel.transmitInt(17, 7, emfClass.emfLow, 1);
-        if (hourf < 10) {
-          parralel.transmit(1, 15, "O>");
-          parralel.transmitInt(2, 15, hourf, 1);
-        } else {
-          parralel.transmitInt(1, 15, hourf, 1);
+        if (dangerClass.getDanger() != dangerOld) {
+          dangerOld =  dangerClass.getDanger();
+          parralel.transmitInt(17, 5, dangerClass.getDanger(), 1);
         }
-        parralel.transmit(4, 15, ":>");
-        if (minutef < 10) {
-          parralel.transmit(6, 15, "O>");
-          parralel.transmitInt(7, 15, minutef, 1);
-        } else {
-          parralel.transmitInt(6, 15, minutef, 1);
+        if (emfHighOld[0] != sensorA.emfHigh) {
+          emfHighOld[0] = sensorA.emfHigh;
+          parralel.transmitInt(17, 6, sensorA.emfHigh, 1);
         }
-        parralel.transmit(9, 15, ":>");
-        if (secondf < 10) {
-          parralel.transmit(11, 15, "O>");
-          parralel.transmitInt(12, 15, secondf, 1);
-        } else {
-          parralel.transmitInt(11, 15, secondf, 1);
+        if (emfLowOld[0] != sensorA.emfLow) {
+          emfLowOld[0] = sensorA.emfLow;
+          parralel.transmitInt(17, 7, sensorA.emfLow, 1);
+        }
+        if (emfHighOld[1] != sensorB.emfHigh) {
+          emfHighOld[1] = sensorB.emfHigh;
+          parralel.transmitInt(17, 9, sensorB.emfHigh, 1);
+        }
+        if (emfLowOld[1] != sensorB.emfLow) {
+          emfLowOld[1] = sensorB.emfLow;
+          parralel.transmitInt(17, 10, sensorB.emfLow, 1);
+        }
+        
+        if (hourOld != hourf) {
+          if (hourf < 10) {
+            parralel.transmit(1, 15, F("O>"));
+            parralel.transmitInt(2, 15, hourf, 1);
+          } else {
+            parralel.transmitInt(1, 15, hourf, 1);
+          }
+          parralel.transmit(4, 15, F(":>"));
+        }
+
+        if (minuteOld != minutef) {
+          if (minutef < 10) {
+            parralel.transmit(6, 15, F("O>"));
+            parralel.transmitInt(7, 15, minutef, 1);
+          } else {
+            parralel.transmitInt(6, 15, minutef, 1);
+          }
+          parralel.transmit(9, 15, F(":>"));
+        }
+        j = j + 1;
+        if (j > 5) {
+          if (secondf < 10) {
+            parralel.transmit(11, 15, F("O>"));
+            parralel.transmitInt(12, 15, secondf, 1);
+          } else {
+            parralel.transmitInt(11, 15, secondf, 1);
+          }
         }
 
         // parralel.transmit(25, 11,     "X>");
@@ -937,33 +1114,63 @@ void setup() {
   parralel.setupP(0, 80);
   delay(1000);
   digitalWrite(13, LOW);
-  // timef.setTime(2022, 7, 18, 20, 1, 0);
-  // parralel.transmit(1, 1, "LDS-3>");
-  // parralel.transmit(7, 1, "Lightning>");
-  // parralel.transmit(1, 2, "Detection System>");
-  // delay(1000);
 }
 
+bool runCalibrate = true;
+bool runScreen = true;
+bool slowTic = true;
+bool runEmf = true;
+int sendGeneral = 0;
+
 void loop() {
-  emfClass.detect();
-  emfClass.calibrate();
+  runCalibrate = ((loopTic % 2) == 0); // 2
+  runScreen = (loopTic % 4) == 0; // 2
+  runEmf = (loopTic % 10) == 0; // 10
+  slowTic = (loopTic % 100) == 0; // 100
+  sensorA.detect();
+  if (com.strikeReg[2] == 1) {
+    com.messageStrike(sensorA.emfHigh, sensorA.emfLow, sensorB.emfHigh, sensorB.emfLow, com.strikeReg[0], com.strikeReg[1]);
+    com.strikeReg[2] = 0;
+  }
+  sensorB.detect();
+  if (com.strikeReg[2] == 1) {
+    com.messageStrike(sensorA.emfHigh, sensorA.emfLow, sensorB.emfHigh, sensorB.emfLow, com.strikeReg[0], com.strikeReg[1]);
+    com.strikeReg[2] = 0;
+  }
+  if (runCalibrate) {
+    sensorA.calibrate();
+    sensorB.calibrate();
+  }
   if (tickers.dispTic < millis()) {
     dispClass.dangerIndicator();
     tickers.dispTic = millis() + 500;
+    sendGeneral = sendGeneral + 1;
+  }
+  if (sendGeneral > 9) {
+    com.messageGeneral(sensorA.emfHigh, sensorA.emfLow, sensorB.emfHigh, sensorB.emfLow);
+    sendGeneral = 0;
   }
   dispClass.flash();
   if (loopTic > 2) {
-    dispClass.emfMeter();
-    loopTic = 0;
+    if (runEmf) {
+      dispClass.emfMeter();
+    }
   }
-  dangerClass.handler();
   if (dispClass.alarm == 1) {
     sounds.alarm();
   }
-  sounds.handler();
-  parralel.handler();
+  if (slowTic) {
+    dangerClass.handler();
+    sounds.handler();
+    thermals.handler();
+  }
+  if (runScreen) {
+    parralel.handler();
+    screen.handler();
+  }
   latencyClass.getLatency();
-  thermals.handler();
-  screen.handler();
   loopTic = loopTic + 1;
+  if (loopTic >= 100000) {
+    loopTic = 2;
+  }
 }
